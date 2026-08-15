@@ -35,7 +35,8 @@ int main(int argc, char *argv[]) {
     gsKit_init_screen(gsGlobal);
     gsKit_mode_switch(gsGlobal, GS_ONESHOT);
 
-    gsKit_fontm_upload(gsGlobal, gsKit_fontm_init());
+    GSFONTM *gsFontM = gsKit_init_fontm();
+    gsKit_fontm_upload(gsGlobal, gsFontM);
 
     /* texture that the metaball field gets uploaded into each frame */
     GSTEXTURE lampTex;
@@ -93,7 +94,7 @@ int main(int argc, char *argv[]) {
         gsKit_prim_sprite(gsGlobal, SCREEN_W - 40, 0, SCREEN_W, SCREEN_H, 1,
             GS_SETREG_RGBAQ(0,0,0,0x50,0x00));
 
-        menu_update_and_draw(gsGlobal, &s_settings, menu_visible);
+        menu_update_and_draw(gsGlobal, gsFontM, &s_settings, menu_visible);
 
         gsKit_queue_exec(gsGlobal);
         gsKit_finish();

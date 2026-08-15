@@ -62,6 +62,6 @@ void physics_update(blob_t *blobs, settings_t *settings, fx_t dt);
 void field_render(const blob_t *blobs, const settings_t *settings,
                    u8 *rgba_out /* FIELD_W*FIELD_H*4 bytes */);
 
-void menu_update_and_draw(GSGLOBAL *gsGlobal, settings_t *settings, int visible);
+void menu_update_and_draw(GSGLOBAL *gsGlobal, GSFONTM *gsFontM, settings_t *settings, int visible);
 
 #endif
