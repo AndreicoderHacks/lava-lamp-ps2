@@ -53,6 +53,18 @@ artifact descărcabil.
 La fel ca la Liero: copiază `lavalamp.elf` pe un stick USB și
 lansează-l din uLaunchELF pe PS2-ul modat.
 
+## Notă despre eroarea "gsKit.h: No such file or directory"
+Dacă ai luat eroarea asta la primul build: cauza e că `gsKit` nu face
+parte din ps2sdk propriu-zis, ci e un proiect separat instalat la
+`$GSKIT` (implicit `/usr/local/ps2dev/gsKit` în imaginea
+`ps2dev/ps2dev`, deja exportat ca variabilă de mediu acolo). Makefile-ul
+de aici include acum `$(GSKIT)/include` + subdirectoarele lui
+(`ee/dma/include`, `ee/gs/include`, `ee/toolkit/include`) și linkează
+`-lgskit_toolkit -lgskit -ldmakit` din `$(GSKIT)/lib`. Dacă totuși dă
+eroare la `GSFONTM` (tipul folosit pentru fontul built-in FONTM), verifică
+numele exact din `$(GSKIT)/ee/toolkit/include/gsFontM.h` din imaginea ta
+— unele versiuni de gsKit au denumit tipul puțin diferit.
+
 ## De ajustat/extins mai departe
 - `FIELD_W/FIELD_H` din `lavalamp.h`: mărește dacă EE-ul duce ușor
   sarcina (mai multe bule = mai mult cost per pixel), micșorează dacă
