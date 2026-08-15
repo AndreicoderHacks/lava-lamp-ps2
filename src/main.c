@@ -45,7 +45,7 @@ int main(int argc, char *argv[]) {
     lampTex.Height   = FIELD_H;
     lampTex.PSM      = GS_PSM_CT32;
     lampTex.Filter   = GS_FILTER_LINEAR;  /* this is what makes the low-res field look smooth */
-    lampTex.Mem      = s_field_rgba;
+    lampTex.Mem      = (u32 *)s_field_rgba;
     lampTex.Vram     = gsKit_vram_alloc(gsGlobal,
                             gsKit_texture_size_ee(FIELD_W, FIELD_H, GS_PSM_CT32),
                             GSKIT_ALLOC_USERBUFFER);
