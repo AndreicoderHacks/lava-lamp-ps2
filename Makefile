@@ -1,5 +1,5 @@
 EE_BIN = lavalamp.elf
-EE_OBJS = src/main.o src/physics.o src/metaball.o src/input.o src/menu.o
+EE_OBJS = src/main.o src/physics.o src/metaball.o src/colour.o src/input.o src/menu.o
 
 # gsKit (+ its bundled dmaKit) is NOT part of ps2sdk -- it's a separate
 # project installed under $(GSKIT) (e.g. /usr/local/ps2dev/gsKit in the
