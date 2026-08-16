@@ -18,8 +18,12 @@ static u8 s_field_rgba[FIELD_W * FIELD_H * 4] __attribute__((aligned(64)));
 int main(int argc, char *argv[]) {
     GSGLOBAL *gsGlobal = gsKit_init_global();
 
-    gsGlobal->Mode   = GS_MODE_PAL;   /* swap to GS_MODE_NTSC if your unit/TV needs it */
-    gsGlobal->Height = SCREEN_H;
+    /* IMPORTANT: Mode and Height must match, or the picture won't fill the
+     * screen (black bars / cropped image) -- this was very likely the
+     * "nu e in tot ecranul" issue. NTSC = 640x448, PAL = 640x512.
+     * Default here is NTSC; switch both lines together if your TV is PAL. */
+    gsGlobal->Mode   = GS_MODE_NTSC;
+    gsGlobal->Height = 448;
     gsGlobal->Width  = SCREEN_W;
     gsGlobal->PSM    = GS_PSM_CT24;
     gsGlobal->PSMZ   = GS_PSMZ_16S;
@@ -57,19 +61,33 @@ int main(int argc, char *argv[]) {
     s_settings.heat            = TO_FX(1.0f);
     s_settings.light_intensity = TO_FX(0.8f);
     s_settings.glow_enabled    = 1;
+    s_settings.speed           = TO_FX(1.0f);
+    s_settings.fader_enabled   = 0;
+    s_settings.fader_hue       = 0;
+    s_settings.fader_speed     = TO_FX(0.05f);
 
     physics_init(s_blobs, &s_settings);
 
     int menu_visible = 0;
-    fx_t dt = TO_FX(1.0f / 60.0f); /* fixed step; PS2 vsync keeps this steady enough */
+    fx_t base_dt = TO_FX(1.0f / 60.0f); /* fixed step; PS2 vsync keeps this steady enough */
 
     while (1) {
         input_update();
 
         if (g_pad_start_pressed) menu_visible = !menu_visible;
 
+        /* "Viteza" in the menu scales simulation time itself, so a higher
+         * setting genuinely speeds up rising/wobbling/merging, not just
+         * the framerate */
+        fx_t dt = FX_MUL(base_dt, s_settings.speed);
+
         if (!menu_visible) {
             physics_update(s_blobs, &s_settings, dt);
+        }
+
+        if (s_settings.fader_enabled) {
+            s_settings.fader_hue += FX_MUL(s_settings.fader_speed, dt);
+            if (s_settings.fader_hue >= FX_ONE) s_settings.fader_hue -= FX_ONE;
         }
 
         field_render(s_blobs, &s_settings, s_field_rgba);

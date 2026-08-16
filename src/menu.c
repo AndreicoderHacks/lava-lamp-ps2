@@ -4,10 +4,10 @@
 const lamp_colour_t g_palette[] = {
     /* liquid            glow (base light)   name */
     { 220,  40,  40,     255, 140,  40,  "Clasic rosu/portocaliu" },
-    { 40,  200, 120,      20, 255, 140,  "Verde radioactiv"       },
-    { 60,  90,  230,      140, 190, 255, "Albastru rece"          },
-    { 230,  60, 200,      255, 120, 220, "Roz/magenta"            },
-    { 240, 210,  30,      255, 240, 140, "Auriu"                  },
+    { 40,  200, 120,     150, 255, 190,  "Verde radioactiv"       },
+    { 60,  90,  230,     140, 190, 255,  "Albastru rece"          },
+    { 230,  60, 200,     255, 150, 230,  "Roz/magenta"            },
+    { 240, 210,  30,     255, 240, 140,  "Auriu"                  },
 };
 const int g_palette_count = sizeof(g_palette) / sizeof(g_palette[0]);
 
@@ -15,7 +15,10 @@ const int g_palette_count = sizeof(g_palette) / sizeof(g_palette[0]);
  * `visible` is true. Navigation: D-pad up/down selects a row,
  * left/right changes the value, START closes the menu (handled by caller). */
 
-typedef enum { ROW_COLOUR = 0, ROW_BUBBLES, ROW_HEAT, ROW_LIGHT, ROW_GLOW, ROW_COUNT } menu_row_t;
+typedef enum {
+    ROW_COLOUR = 0, ROW_BUBBLES, ROW_HEAT, ROW_LIGHT, ROW_GLOW,
+    ROW_SPEED, ROW_FADER, ROW_FADER_SPEED, ROW_COUNT
+} menu_row_t;
 
 static int s_selected_row = 0;
 
@@ -47,6 +50,17 @@ void menu_update_and_draw(GSGLOBAL *gsGlobal, GSFONTM *gsFontM, settings_t *sett
         case ROW_GLOW:
             if (g_pad_dpad_right || g_pad_dpad_left) settings->glow_enabled = !settings->glow_enabled;
             break;
+        case ROW_SPEED:
+            if (g_pad_dpad_right && settings->speed < TO_FX(3.0f)) settings->speed += TO_FX(0.1f);
+            if (g_pad_dpad_left  && settings->speed > TO_FX(0.2f)) settings->speed -= TO_FX(0.1f);
+            break;
+        case ROW_FADER:
+            if (g_pad_dpad_right || g_pad_dpad_left) settings->fader_enabled = !settings->fader_enabled;
+            break;
+        case ROW_FADER_SPEED:
+            if (g_pad_dpad_right && settings->fader_speed < TO_FX(0.5f)) settings->fader_speed += TO_FX(0.02f);
+            if (g_pad_dpad_left  && settings->fader_speed > TO_FX(0.01f)) settings->fader_speed -= TO_FX(0.02f);
+            break;
     }
 
     /* text drawing uses gsKit's built-in debug font -- fine for a settings
@@ -59,8 +73,16 @@ void menu_update_and_draw(GSGLOBAL *gsGlobal, GSFONTM *gsFontM, settings_t *sett
     char line[64];
     const char *marker;
 
+    /* NOTE: to turn a fixed-point (16.16) value into a whole-number percent,
+     * multiply by 100 THEN shift right 16 (FX_TO_INT) -- do NOT divide by
+     * FX_ONE again afterwards, that was the earlier "always shows 0" bug. */
+
     marker = (s_selected_row == ROW_COLOUR) ? "> " : "  ";
-    __builtin_snprintf(line, sizeof(line), "%sCuloare: %s", marker, g_palette[settings->colour_index].name);
+    if (settings->fader_enabled) {
+        __builtin_snprintf(line, sizeof(line), "%sCuloare: (fader activ)", marker);
+    } else {
+        __builtin_snprintf(line, sizeof(line), "%sCuloare: %s", marker, g_palette[settings->colour_index].name);
+    }
     gsKit_fontm_print_scaled(gsGlobal, gsFontM, 100, y, 2, 0.8f, GS_SETREG_RGBAQ(255,255,0,0x80,0x00), line);
     y += 20;
 
@@ -70,16 +92,31 @@ void menu_update_and_draw(GSGLOBAL *gsGlobal, GSFONTM *gsFontM, settings_t *sett
     y += 20;
 
     marker = (s_selected_row == ROW_HEAT) ? "> " : "  ";
-    __builtin_snprintf(line, sizeof(line), "%sCaldura: %d%%", marker, (FX_TO_INT(settings->heat * 100)) / FX_ONE);
+    __builtin_snprintf(line, sizeof(line), "%sCaldura: %d%%", marker, FX_TO_INT(settings->heat * 100));
     gsKit_fontm_print_scaled(gsGlobal, gsFontM, 100, y, 2, 0.8f, GS_SETREG_RGBAQ(255,255,0,0x80,0x00), line);
     y += 20;
 
     marker = (s_selected_row == ROW_LIGHT) ? "> " : "  ";
-    __builtin_snprintf(line, sizeof(line), "%sLumina: %d%%", marker, (FX_TO_INT(settings->light_intensity * 100)) / FX_ONE);
+    __builtin_snprintf(line, sizeof(line), "%sLumina: %d%%", marker, FX_TO_INT(settings->light_intensity * 100));
     gsKit_fontm_print_scaled(gsGlobal, gsFontM, 100, y, 2, 0.8f, GS_SETREG_RGBAQ(255,255,0,0x80,0x00), line);
     y += 20;
 
     marker = (s_selected_row == ROW_GLOW) ? "> " : "  ";
     __builtin_snprintf(line, sizeof(line), "%sGlow fundal: %s", marker, settings->glow_enabled ? "ON" : "OFF");
+    gsKit_fontm_print_scaled(gsGlobal, gsFontM, 100, y, 2, 0.8f, GS_SETREG_RGBAQ(255,255,0,0x80,0x00), line);
+    y += 20;
+
+    marker = (s_selected_row == ROW_SPEED) ? "> " : "  ";
+    __builtin_snprintf(line, sizeof(line), "%sViteza: %d%%", marker, FX_TO_INT(settings->speed * 100));
+    gsKit_fontm_print_scaled(gsGlobal, gsFontM, 100, y, 2, 0.8f, GS_SETREG_RGBAQ(255,255,0,0x80,0x00), line);
+    y += 20;
+
+    marker = (s_selected_row == ROW_FADER) ? "> " : "  ";
+    __builtin_snprintf(line, sizeof(line), "%sColor fader: %s", marker, settings->fader_enabled ? "ON" : "OFF");
+    gsKit_fontm_print_scaled(gsGlobal, gsFontM, 100, y, 2, 0.8f, GS_SETREG_RGBAQ(255,255,0,0x80,0x00), line);
+    y += 20;
+
+    marker = (s_selected_row == ROW_FADER_SPEED) ? "> " : "  ";
+    __builtin_snprintf(line, sizeof(line), "%sViteza fader: %d%%", marker, FX_TO_INT(settings->fader_speed * 100));
     gsKit_fontm_print_scaled(gsGlobal, gsFontM, 100, y, 2, 0.8f, GS_SETREG_RGBAQ(255,255,0,0x80,0x00), line);
 }

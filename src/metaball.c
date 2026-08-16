@@ -9,7 +9,9 @@
 #define ISO_EDGE_SOFT   TO_FX(0.35f)
 
 void field_render(const blob_t *blobs, const settings_t *settings, u8 *out) {
-    const lamp_colour_t *col = &g_palette[settings->colour_index];
+    u8 liquid_r, liquid_g, liquid_b, glow_r, glow_g, glow_b;
+    colour_get_liquid(settings, &liquid_r, &liquid_g, &liquid_b);
+    colour_get_glow(settings, &glow_r, &glow_g, &glow_b);
     int px, py, i;
 
     for (py = 0; py < FIELD_H; py++) {
@@ -35,16 +37,16 @@ void field_render(const blob_t *blobs, const settings_t *settings, u8 *out) {
 
             if (sum > ISO_THRESHOLD + ISO_EDGE_SOFT) {
                 /* fully inside a blob */
-                px_out[0] = col->r;
-                px_out[1] = col->g;
-                px_out[2] = col->b;
+                px_out[0] = liquid_r;
+                px_out[1] = liquid_g;
+                px_out[2] = liquid_b;
                 px_out[3] = 0x80; /* GS alpha is 0-0x80 */
             } else if (sum > ISO_THRESHOLD - ISO_EDGE_SOFT) {
                 /* soft edge: blend liquid colour toward glow/background */
                 fx_t t = FX_DIV(sum - (ISO_THRESHOLD - ISO_EDGE_SOFT), ISO_EDGE_SOFT * 2);
-                int blend_r = col->gr + (((col->r - col->gr) * FX_TO_INT(t * 256)) >> 8);
-                int blend_g = col->gg + (((col->g - col->gg) * FX_TO_INT(t * 256)) >> 8);
-                int blend_b = col->gb + (((col->b - col->gb) * FX_TO_INT(t * 256)) >> 8);
+                int blend_r = glow_r + (((liquid_r - glow_r) * FX_TO_INT(t * 256)) >> 8);
+                int blend_g = glow_g + (((liquid_g - glow_g) * FX_TO_INT(t * 256)) >> 8);
+                int blend_b = glow_b + (((liquid_b - glow_b) * FX_TO_INT(t * 256)) >> 8);
                 px_out[0] = blend_r;
                 px_out[1] = blend_g;
                 px_out[2] = blend_b;
@@ -52,9 +54,9 @@ void field_render(const blob_t *blobs, const settings_t *settings, u8 *out) {
             } else if (settings->glow_enabled) {
                 /* background glow from the base light, no liquid here */
                 fx_t g = FX_MUL(glow_here, TO_FX(0.5f));
-                px_out[0] = (u8)FX_TO_INT(FX_MUL(TO_FX(col->gr), g));
-                px_out[1] = (u8)FX_TO_INT(FX_MUL(TO_FX(col->gg), g));
-                px_out[2] = (u8)FX_TO_INT(FX_MUL(TO_FX(col->gb), g));
+                px_out[0] = (u8)FX_TO_INT(FX_MUL(TO_FX(glow_r), g));
+                px_out[1] = (u8)FX_TO_INT(FX_MUL(TO_FX(glow_g), g));
+                px_out[2] = (u8)FX_TO_INT(FX_MUL(TO_FX(glow_b), g));
                 px_out[3] = (u8)FX_TO_INT(g * 0x60);
             } else {
                 px_out[0] = px_out[1] = px_out[2] = px_out[3] = 0;
