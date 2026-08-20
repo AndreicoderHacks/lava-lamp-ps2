@@ -7,22 +7,23 @@
 /* --- field / texture resolution ---------------------------------------
  * The metaball field is computed on the EE at low res, then uploaded as
  * a GS texture and stretched to fill the screen with bilinear filtering.
- * 160x120 keeps the per-pixel blob-distance sum cheap (~19k px) while
- * still looking smooth once magnified with LINEAR filtering.
+ * Bumped from 160x120 to 240x180 (2.25x the pixels) for a noticeably
+ * smoother/less pixelated look -- still cheap: at ~14 alive blobs that's
+ * well under 700k fixed-point ops/frame, comfortable for the EE at 60fps.
  * ---------------------------------------------------------------------*/
-#define FIELD_W   160
-#define FIELD_H   120
+#define FIELD_W   240
+#define FIELD_H   180
 
 #define SCREEN_W  640
 #define SCREEN_H  448
 
 #define MAX_BLOBS 22
 
-/* radius (in field-pixels) a merged blob is allowed to reach before it's
- * forced to split back into two -- this is what stops the "one giant
- * blob eats the whole lamp" bug */
-#define MAX_BLOB_RADIUS   TO_FX(15)
-#define MIN_BLOB_RADIUS   TO_FX(4)
+/* normal bubble size range, and the size of the rare "combo" bubble
+ * (see s_spawn_count in physics.c -- every 10th spawn is a combo) */
+#define MIN_BLOB_RADIUS   TO_FX(6)
+#define MAX_BLOB_RADIUS   TO_FX(13)
+#define COMBO_BLOB_RADIUS TO_FX(24)
 
 /* fixed point helpers (16.16) used in the physics/field code so we avoid
  * float<->int conversions in the hot per-pixel loop */
@@ -34,15 +35,20 @@ typedef s32 fx_t;
 #define FX_MUL(a,b) ((fx_t)(((s64)(a) * (s64)(b)) >> FX_SHIFT))
 #define FX_DIV(a,b) ((fx_t)(((s64)(a) << FX_SHIFT) / (b)))
 
+/* Each blob just travels in a straight line, bottom<->top, at its own
+ * fixed radius and speed -- no radius ever changes at runtime. The
+ * "merging" and "separating" look is purely visual, produced by the
+ * metaball field in metaball.c when two blobs' circles overlap; there is
+ * no persistent merge state to get stuck, which is what used to cause
+ * blobs to grow forever and never shrink back. */
 typedef struct {
-    fx_t x, y;          /* position in field space */
-    fx_t vx, vy;        /* velocity */
-    fx_t radius;        /* base radius in field-pixels */
-    fx_t temp;           /* 0 = cold (sinks), FX_ONE = hot (rises) */
+    fx_t x, y;           /* position in field space */
+    fx_t vx;              /* horizontal wobble velocity */
+    fx_t vy;              /* vertical travel speed (magnitude, always >= 0) */
+    fx_t radius;          /* fixed for this blob's lifetime */
     fx_t wobble_phase;
     fx_t wobble_speed;
-    s16  merge_cooldown; /* frames left before this blob can merge again */
-    s16  split_timer;    /* frames left before an oversized blob splits */
+    u8   rising;          /* 1 = travelling bottom->top, 0 = top->bottom */
     u8   alive;
 } blob_t;
 
@@ -56,7 +62,7 @@ typedef struct {
 typedef struct {
     int  colour_index;    /* index into g_palette, used when fader is OFF */
     int  bubble_count;    /* 3..MAX_BLOBS */
-    fx_t heat;             /* overall lamp temperature, drives rise speed */
+    fx_t heat;             /* speed multiplier for rising/sinking bubbles */
     fx_t light_intensity;  /* 0..FX_ONE, glow brightness at the base */
     u8   glow_enabled;
     fx_t speed;             /* global animation speed multiplier, e.g. 0.2..3.0 */
