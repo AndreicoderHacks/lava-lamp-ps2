@@ -3,62 +3,82 @@
 /* Metaball "iso-field": for each field pixel sum radius^2 / dist^2 from
  * every alive blob. Where the sum crosses a threshold, we're inside the
  * liquid; near the threshold we blend liquid colour into glow colour for
- * a soft edge instead of a hard cutoff (cheap fake anti-aliasing). */
+ * a soft edge instead of a hard cutoff.
+ *
+ * To keep the edge smooth on real hardware regardless of how the GS ends
+ * up filtering the upscaled texture, the anti-aliasing is baked directly
+ * into the texture: each output texel is the AVERAGE of 4 sub-samples
+ * (a small 2x2 supersample grid) of the iso-field, not a single point
+ * sample. That gives every texel its own soft, blended edge value up
+ * front, instead of relying on hardware bilinear to smooth hard-edged
+ * texels after the fact. */
 
 #define ISO_THRESHOLD   TO_FX(1)
 #define ISO_EDGE_SOFT   TO_FX(0.5f)   /* wider soft band = smoother-looking edges */
+#define SS_OFFSET       TO_FX(0.25f)  /* 2x2 supersample offsets, in field pixels */
+
+/* sums the iso-field at one sub-sample row (fy) across all blobs that can
+ * reach it, for both sub-columns of every output pixel; adds the result
+ * into accum[px] (caller clears/owns the accumulator) */
+static void accumulate_subrow(const blob_t *blobs, fx_t fy, fx_t *accum) {
+    fx_t r2[MAX_BLOBS];
+    int row_active[MAX_BLOBS];
+    fx_t row_dy2[MAX_BLOBS];
+    int row_count = 0, i, px;
+
+    for (i = 0; i < MAX_BLOBS; i++) {
+        if (!blobs[i].alive) continue;
+        fx_t reach = FX_MUL(blobs[i].radius, TO_FX(5));
+        fx_t dy = fy - blobs[i].y;
+        if (dy < 0) dy = -dy;
+        if (dy > reach) continue;
+        r2[row_count] = FX_MUL(blobs[i].radius, blobs[i].radius);
+        row_active[row_count] = i;
+        row_dy2[row_count] = FX_MUL(dy, dy);
+        row_count++;
+    }
+
+    for (px = 0; px < FIELD_W; px++) {
+        fx_t base_fx = TO_FX(px);
+        int k;
+        fx_t sum_a = 0, sum_b = 0; /* two sub-columns for this output pixel */
+
+        for (k = 0; k < row_count; k++) {
+            i = row_active[k];
+            fx_t dxa = (base_fx - SS_OFFSET) - blobs[i].x;
+            fx_t dxb = (base_fx + SS_OFFSET) - blobs[i].x;
+            fx_t dist2a = FX_MUL(dxa, dxa) + row_dy2[k];
+            fx_t dist2b = FX_MUL(dxb, dxb) + row_dy2[k];
+            if (dist2a < TO_FX(1)) dist2a = TO_FX(1);
+            if (dist2b < TO_FX(1)) dist2b = TO_FX(1);
+            sum_a += FX_DIV(r2[k], dist2a);
+            sum_b += FX_DIV(r2[k], dist2b);
+        }
+        accum[px] += sum_a + sum_b; /* two of the four sub-samples for this texel */
+    }
+}
 
 void field_render(const blob_t *blobs, const settings_t *settings, u8 *out) {
     u8 liquid_r, liquid_g, liquid_b, glow_r, glow_g, glow_b;
     colour_get_liquid(settings, &liquid_r, &liquid_g, &liquid_b);
     colour_get_glow(settings, &glow_r, &glow_g, &glow_b);
-    int px, py, i;
+    int px, py;
 
-    /* precompute radius^2 and a "reach" distance per blob once per frame
-     * instead of once per pixel -- a blob's field contribution is
-     * negligible past ~5x its radius, so rows/pixels outside that just
-     * skip it entirely. This is what keeps the higher-res field cheap. */
-    fx_t r2[MAX_BLOBS];
-    fx_t reach[MAX_BLOBS];
-    for (i = 0; i < MAX_BLOBS; i++) {
-        if (!blobs[i].alive) continue;
-        r2[i] = FX_MUL(blobs[i].radius, blobs[i].radius);
-        reach[i] = FX_MUL(blobs[i].radius, TO_FX(5));
-    }
-
-    int row_active[MAX_BLOBS];
-    fx_t row_dy2[MAX_BLOBS];
+    static fx_t accum[FIELD_W];
 
     for (py = 0; py < FIELD_H; py++) {
         fx_t fy = TO_FX(py);
+
+        for (px = 0; px < FIELD_W; px++) accum[px] = 0;
+        accumulate_subrow(blobs, fy - SS_OFFSET, accum); /* top sub-row (2 samples) */
+        accumulate_subrow(blobs, fy + SS_OFFSET, accum); /* bottom sub-row (2 samples) */
+
         /* base glow is strongest near the bottom, fading toward the top */
         fx_t glow_here = FX_MUL(settings->light_intensity,
                             FX_DIV(TO_FX(FIELD_H - py), TO_FX(FIELD_H)));
 
-        /* which blobs can possibly reach this row at all? */
-        int row_count = 0;
-        for (i = 0; i < MAX_BLOBS; i++) {
-            if (!blobs[i].alive) continue;
-            fx_t dy = fy - blobs[i].y;
-            if (dy < 0) dy = -dy;
-            if (dy > reach[i]) continue;
-            row_active[row_count] = i;
-            row_dy2[row_count] = FX_MUL(dy, dy);
-            row_count++;
-        }
-
         for (px = 0; px < FIELD_W; px++) {
-            fx_t sum = 0;
-            fx_t fx = TO_FX(px);
-            int k;
-
-            for (k = 0; k < row_count; k++) {
-                i = row_active[k];
-                fx_t dx = fx - blobs[i].x;
-                fx_t dist2 = FX_MUL(dx, dx) + row_dy2[k];
-                if (dist2 < TO_FX(1)) dist2 = TO_FX(1); /* avoid div by 0 */
-                sum += FX_DIV(r2[i], dist2);
-            }
+            fx_t sum = accum[px] >> 2; /* average of the 4 sub-samples */
 
             u8 *px_out = &out[(py * FIELD_W + px) * 4];
 

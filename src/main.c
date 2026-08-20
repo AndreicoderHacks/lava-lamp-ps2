@@ -27,6 +27,13 @@ int main(int argc, char *argv[]) {
     gsGlobal->Width  = SCREEN_W;
     gsGlobal->PSM    = GS_PSM_CT24;
     gsGlobal->PSMZ   = GS_PSMZ_16S;
+    /* Non-interlaced/FRAME mode avoids the classic PS2 "combed/garbled
+     * text" artifact: interlaced output draws odd/even scanlines on
+     * alternating fields, and thin 1px-tall text falls apart between
+     * fields (exactly the corrupted-looking text you saw). Big filled
+     * shapes like the blobs mostly hide it, text doesn't. */
+    gsGlobal->Interlace = GS_NONINTERLACED;
+    gsGlobal->Field     = GS_FRAME;
     gsGlobal->DoubleBuffering = GS_SETTING_ON;
     gsGlobal->ZBuffering      = GS_SETTING_OFF;
     gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
